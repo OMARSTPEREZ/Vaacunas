@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import logoCompleto from '../../assets/logo_completo.png';
+import Logo from './Logo';
 import {
     LayoutDashboard,
     Users,
@@ -44,14 +44,10 @@ const Sidebar: React.FC = () => {
         >
             <div className="p-0 flex items-center justify-center border-b dark:border-zinc-800/50 bg-white dark:bg-zinc-900/10">
                 <div className={cn(
-                    "transition-all duration-300 flex items-center justify-center overflow-hidden",
+                    "transition-all duration-300 flex items-center justify-center overflow-hidden text-[#004C97] dark:text-white",
                     collapsed ? "h-12 w-12" : "h-24 w-full px-2"
                 )}>
-                    <img
-                        src={logoCompleto}
-                        alt="Logo APP"
-                        className="h-full w-full object-contain scale-110"
-                    />
+                    <Logo collapsed={collapsed} showText={!collapsed} className={collapsed ? "h-7 w-7" : "h-12"} />
                 </div>
             </div>
 
@@ -73,7 +69,7 @@ const Sidebar: React.FC = () => {
                 ))}
             </nav>
 
-            <div className="p-4 border-t dark:border-zinc-800">
+            <div className="p-4 border-t dark:border-zinc-800 flex flex-col gap-2">
                 <div className={cn(
                     "flex items-center gap-3 p-3 rounded-xl",
                     role === 'SUPER_USUARIO' ? "bg-red-50 dark:bg-red-950/20 text-red-600" :
@@ -87,6 +83,17 @@ const Sidebar: React.FC = () => {
                         </span>
                     )}
                 </div>
+
+                {/* Version Tag */}
+                <div className="flex justify-center opacity-40 mt-2">
+                    {!collapsed ? (
+                        <span className="text-[10px] font-bold tracking-[3px] uppercase text-slate-900 dark:text-zinc-400">
+                            VERSIÓN 2.0
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-black text-slate-900 dark:text-zinc-400">V2</span>
+                    )}
+                </div>
             </div>
 
             <button
@@ -95,7 +102,7 @@ const Sidebar: React.FC = () => {
             >
                 {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </button>
-        </aside>
+        </aside >
     );
 };
 

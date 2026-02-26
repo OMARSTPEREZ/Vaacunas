@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Sun, Moon, User, LogOut } from 'lucide-react';
-import logoCompleto from '../../assets/logo_completo.png';
+import Logo from './Logo';
 
 const Header: React.FC = () => {
     const { user, role, logout } = useAuth();
@@ -11,8 +11,11 @@ const Header: React.FC = () => {
     return (
         <header className="h-16 glass border-b flex items-center justify-between px-6 sticky top-0 z-30">
             <div className="flex items-center gap-3">
-                <div className="h-12 w-48 flex items-center justify-center">
-                    <img src={logoCompleto} alt="Logo" className="h-full w-full object-contain" />
+                <div className="h-12 flex items-center justify-center text-[#004C97] dark:text-white">
+                    {/* Desktop Logo */}
+                    <Logo className="h-10 hidden sm:flex" />
+                    {/* Mobile Logo (Syringe) */}
+                    <Logo collapsed={true} className="h-8 w-8 sm:hidden" />
                 </div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-orange-400 bg-clip-text text-transparent hidden sm:block">
                     Modelo de Vacunación

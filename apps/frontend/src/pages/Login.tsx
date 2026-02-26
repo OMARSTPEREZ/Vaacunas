@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import { LogIn } from 'lucide-react';
-import logoCompleto from '../assets/logo_completo.png';
+import Logo from '../components/Layout/Logo';
 import toast from 'react-hot-toast';
 
 const Login: React.FC = () => {
@@ -36,8 +36,8 @@ const Login: React.FC = () => {
 
             <div className="w-full max-w-md bg-white/70 dark:bg-zinc-900/70 backdrop-blur-3xl border border-white/50 dark:border-white/5 shadow-[0_8px_32px_rgba(0,0,0,0.08)] rounded-3xl p-8 relative z-10">
                 <div className="flex justify-center mb-8">
-                    <div className="h-28 w-full flex items-center justify-center bg-white dark:bg-zinc-900/50 rounded-2xl p-4 shadow-xl border border-white/50">
-                        <img src={logoCompleto} alt="Logo" className="h-full w-full object-contain" />
+                    <div className="h-28 w-full flex items-center justify-center bg-white dark:bg-zinc-900/50 rounded-2xl p-4 shadow-xl border border-white/50 text-secondary dark:text-white">
+                        <Logo className="h-16" />
                     </div>
                 </div>
 

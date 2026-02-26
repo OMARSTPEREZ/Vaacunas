@@ -161,7 +161,7 @@ const RegistroDosis: React.FC = () => {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
                         <div className={!hasSearched ? "w-full text-center" : ""}>
                             <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase italic underline decoration-primary/30 underline-offset-8">
-                                BUSCADOR DE PACIENTES <span className="bg-primary text-white text-[10px] px-2 py-1 rounded-full not-italic align-middle ml-2">VERSIÓN 2.0</span>
+                                BUSCADOR DE PACIENTES
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 mt-4 font-medium max-w-2xl mx-auto">
                                 Ingrese el número de identidad o nombres completos del trabajador para consultar su historial de vacunación.
