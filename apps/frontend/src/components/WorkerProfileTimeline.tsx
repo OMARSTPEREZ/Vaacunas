@@ -50,21 +50,25 @@ interface TimelineItemProps {
 const TimelineItem: React.FC<TimelineItemProps> = ({ doseNum, date, status, label, onEdit }) => {
     return (
         <div className="flex flex-col items-center gap-2 relative z-10 flex-1 group">
-            <div
-                onClick={status !== 'future' ? onEdit : undefined}
-                className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300",
-                    status === 'completed' || status === 'navy' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200" :
-                        status === 'current' ? "bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xl scale-110" :
-                            "bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600"
-                )}
-            >
-                {status === 'completed' || status === 'navy' ? <CheckCircle2 size={16} strokeWidth={3} /> : (doseNum === 0 ? 'R' : doseNum)}
+            <div className="flex items-center gap-2 cursor-pointer" onClick={status !== 'future' ? onEdit : undefined}>
+                <div
+                    className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300",
+                        status === 'completed' || status === 'navy' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200" :
+                            status === 'current' ? "bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xl scale-110" :
+                                "bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600"
+                    )}
+                >
+                    {status === 'completed' || status === 'navy' ? <CheckCircle2 size={16} strokeWidth={3} /> : (doseNum === 0 ? 'R' : doseNum)}
+                </div>
 
                 {status !== 'future' && (
-                    <div className="absolute -top-1 -right-1 bg-white dark:bg-zinc-900 text-primary p-0.5 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity border border-primary/20">
-                        <Edit2 size={10} />
-                    </div>
+                    <button
+                        className="text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 active:scale-95 flex items-center justify-center"
+                        title="Modificar Registro"
+                    >
+                        <Edit2 size={18} />
+                    </button>
                 )}
             </div>
             <div className="text-center">
