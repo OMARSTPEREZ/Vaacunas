@@ -54,7 +54,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ doseNum, date, status, labe
                 <div
                     className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300",
-                        status === 'completed' || status === 'navy' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200" :
+                        status === 'completed' || status === 'navy' ? "bg-emerald-500 text-white" :
                             status === 'current' ? "bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xl scale-110" :
                                 "bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600"
                     )}
@@ -64,10 +64,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ doseNum, date, status, labe
 
                 {status !== 'future' && (
                     <button
-                        className="absolute -right-3 -top-1 text-orange-500 opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 z-20 drop-shadow-sm"
+                        className="absolute -right-2 -top-1 text-orange-500 opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 z-20 drop-shadow-sm"
                         title="Modificar Registro"
                     >
-                        <Edit2 size={18} strokeWidth={2.5} />
+                        <Edit2 size={15} strokeWidth={3} />
                     </button>
                 )}
             </div>
