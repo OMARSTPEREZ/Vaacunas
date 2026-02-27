@@ -50,7 +50,7 @@ interface TimelineItemProps {
 const TimelineItem: React.FC<TimelineItemProps> = ({ doseNum, date, status, label, onEdit }) => {
     return (
         <div className="flex flex-col items-center gap-2 relative z-10 flex-1 group">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={status !== 'future' ? onEdit : undefined}>
+            <div className="relative cursor-pointer" onClick={status !== 'future' ? onEdit : undefined}>
                 <div
                     className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300",
@@ -64,14 +64,14 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ doseNum, date, status, labe
 
                 {status !== 'future' && (
                     <button
-                        className="text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 active:scale-95 flex items-center justify-center"
+                        className="absolute -right-3 -top-1 text-orange-500 opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 z-20 drop-shadow-sm"
                         title="Modificar Registro"
                     >
-                        <Edit2 size={18} />
+                        <Edit2 size={18} strokeWidth={2.5} />
                     </button>
                 )}
             </div>
-            <div className="text-center">
+            <div className="text-center mt-1">
                 <p className={cn(
                     "text-[9px] font-black uppercase tracking-tight",
                     status === 'current' ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-zinc-500"
