@@ -11,12 +11,12 @@ interface ResultadoSemaforo {
 export type TipoVacuna = 'TETANOS' | 'DPT' | 'DT' | 'HEPATITIS_B' | 'FIEBRE_AMARILLA' | 'INFLUENZA' | 'HEPATITIS_A' | 'OTRA';
 
 interface PacienteData {
-    dosis_1_fecha: string | null;
-    dosis_2_fecha: string | null;
-    dosis_3_fecha: string | null;
-    dosis_4_fecha: string | null;
-    dosis_5_fecha: string | null;
-    refuerzo_fecha: string | null;
+    dosis_1: string | null;
+    dosis_2: string | null;
+    dosis_3: string | null;
+    dosis_4: string | null;
+    dosis_5: string | null;
+    refuerzo: string | null;
     origen_aplicacion?: string | null;
 }
 
@@ -38,12 +38,12 @@ export function getEstadoVacuna(paciente: PacienteData, tipoVacuna: TipoVacuna, 
         paciente.origen_aplicacion.toLowerCase() !== 'local' &&
         paciente.origen_aplicacion.toLowerCase() !== 'esta regional';
 
-    const d1 = paciente.dosis_1_fecha ? parseISO(paciente.dosis_1_fecha) : null;
-    const d2 = paciente.dosis_2_fecha ? parseISO(paciente.dosis_2_fecha) : null;
-    const d3 = paciente.dosis_3_fecha ? parseISO(paciente.dosis_3_fecha) : null;
-    const d4 = paciente.dosis_4_fecha ? parseISO(paciente.dosis_4_fecha) : null;
-    const d5 = paciente.dosis_5_fecha ? parseISO(paciente.dosis_5_fecha) : null;
-    const ref = paciente.refuerzo_fecha ? parseISO(paciente.refuerzo_fecha) : null;
+    const d1 = paciente.dosis_1 ? parseISO(paciente.dosis_1) : null;
+    const d2 = paciente.dosis_2 ? parseISO(paciente.dosis_2) : null;
+    const d3 = paciente.dosis_3 ? parseISO(paciente.dosis_3) : null;
+    const d4 = paciente.dosis_4 ? parseISO(paciente.dosis_4) : null;
+    const d5 = paciente.dosis_5 ? parseISO(paciente.dosis_5) : null;
+    const ref = paciente.refuerzo ? parseISO(paciente.refuerzo) : null;
 
     const checkStatus = (fechaProgramada: Date | null): { estado: EstadoSemaforo; proximaDosis: Date | null } => {
         if (!fechaProgramada) return { estado: 'ROJO', proximaDosis: null };
@@ -178,7 +178,7 @@ export function calculateComplianceStats(pacientes: any[]) {
         statsByRegion[region].total++;
         statsBySeccional[seccional].total++;
 
-        const doses = [p.dosis_1_fecha, p.dosis_2_fecha, p.dosis_3_fecha, p.dosis_4_fecha, p.dosis_5_fecha];
+        const doses = [p.dosis_1, p.dosis_2, p.dosis_3, p.dosis_4, p.dosis_5];
         const hasAny = doses.some(d => d);
 
         if (hasAny) iniciados++;
@@ -191,15 +191,15 @@ export function calculateComplianceStats(pacientes: any[]) {
         // Compliance logic
         let isComplete = false;
         if (['TETANOS', 'DPT', 'DT'].includes(tipo)) {
-            isComplete = !!p.dosis_5_fecha;
+            isComplete = !!p.dosis_5;
         } else if (tipo === 'HEPATITIS_B') {
-            isComplete = !!p.dosis_3_fecha;
+            isComplete = !!p.dosis_3;
         } else if (tipo === 'FIEBRE_AMARILLA') {
-            isComplete = !!p.dosis_1_fecha;
+            isComplete = !!p.dosis_1;
         } else if (tipo === 'INFLUENZA') {
-            isComplete = !!p.dosis_1_fecha; // Or whatever is defined
+            isComplete = !!p.dosis_1; // Or whatever is defined
         } else {
-            isComplete = !!p.dosis_1_fecha;
+            isComplete = !!p.dosis_1;
         }
 
         if (isComplete) {

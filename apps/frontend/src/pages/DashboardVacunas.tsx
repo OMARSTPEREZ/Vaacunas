@@ -90,7 +90,7 @@ const DashboardVacunas: React.FC = () => {
             // Date filter logic (check if any dose matches the range)
             let matchFecha = true;
             if (filters.fechaInicio || filters.fechaFin) {
-                const dates = [p.dosis_1_fecha, p.dosis_2_fecha, p.dosis_3_fecha, p.dosis_4_fecha, p.dosis_5_fecha, p.refuerzo_fecha].filter(Boolean) as string[];
+                const dates = [p.dosis_1, p.dosis_2, p.dosis_3, p.dosis_4, p.dosis_5, p.refuerzo].filter(Boolean) as string[];
                 matchFecha = dates.some(d => {
                     const date = d.split('T')[0];
                     const start = filters.fechaInicio || '0000-00-00';

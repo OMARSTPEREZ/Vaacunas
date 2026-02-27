@@ -13,6 +13,7 @@ import {
     Syringe,
     MoreVertical,
     Dna,
+    UserPlus,
     ShieldCheck,
     Workflow,
     Activity
@@ -102,10 +103,11 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
     const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
     const [profileFormData, setProfileFormData] = useState({
         nombres_apellidos: '',
-        numero_documento: '',
+        no_de_documento: '',
+        sexo: '',
         regional: '',
         seccional: '',
-        ano_activo: '',
+        "año_activo": '',
         estado_servidor: '',
         observacion: ''
     });
@@ -144,7 +146,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             const config = configs.find(c => c.tipo_vacuna === type);
             const req = config ? config.dosis_requeridas : 5;
             for (let i = 1; i <= req; i++) {
-                if (!schemeRow[`dosis_${i}_fecha`]) {
+                if (!schemeRow[`dosis_${i}`]) {
                     firstMissing = i;
                     break;
                 }
@@ -167,7 +169,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
     };
 
     const openEditModal = (schemeRow: any, type: string, d: number) => {
-        const fieldName = d === 0 ? 'refuerzo_fecha' : `dosis_${d}_fecha`;
+        const fieldName = d === 0 ? 'refuerzo' : `dosis_${d}`;
         const date = schemeRow[fieldName];
         const exactType = d === 0 ? schemeRow.refuerzo_tipo_vacuna : schemeRow[`dosis_${d}_tipo_vacuna`];
 
@@ -179,7 +181,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             date: date || new Date().toISOString().split('T')[0],
             origin: schemeRow.origen_aplicacion || 'OPS',
             responsable: schemeRow.responsable_enfermeria || worker.responsable_enfermeria || '',
-            observacion: '', // Clear observation to force a new justification
+            observacion: schemeRow[d === 0 ? 'refuerzo_obs' : `dosis_${d}_obs`] || '',
             targetWorkerId: schemeRow.id
         });
         setIsEditing(true);
@@ -204,7 +206,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             if (schemeRow) {
                 if (formData.doseNum > 1) {
                     for (let i = 1; i < formData.doseNum; i++) {
-                        if (!schemeRow[`dosis_${i}_fecha`]) {
+                        if (!schemeRow[`dosis_${i}`]) {
                             toast.error(`Acceso Denegado: Por favor registre la Dosis ${i} primero.`);
                             return;
                         }
@@ -213,14 +215,14 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                     const config = configs.find(c => c.tipo_vacuna === formData.vaccineType);
                     const req = config ? config.dosis_requeridas : 5;
                     for (let i = 1; i <= req; i++) {
-                        if (!schemeRow[`dosis_${i}_fecha`]) {
+                        if (!schemeRow[`dosis_${i}`]) {
                             toast.error(`Acceso Denegado: Debe completar la Dosis ${i} antes del Refuerzo.`);
                             return;
                         }
                     }
                 }
 
-                const fieldName = formData.doseNum === 0 ? 'refuerzo_fecha' : `dosis_${formData.doseNum}_fecha`;
+                const fieldName = formData.doseNum === 0 ? 'refuerzo' : `dosis_${formData.doseNum}`;
                 if (schemeRow[fieldName]) {
                     toast.error(`Esta dosis ya se encuentra registrada. Utilice el ícono del lápiz (✏️) sobre la etiqueta para editarla.`);
                     return;
@@ -244,14 +246,15 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             // If it's a new scheme (un-enrolled standard vaccine), create it first
             if (!targetId) {
                 const newRow = {
-                    numero_documento: worker.numero_documento,
+                    no_de_documento: worker.no_de_documento,
                     nombres_apellidos: worker.nombres_apellidos,
+                    sexo: worker.sexo,
                     regional: worker.regional,
                     seccional: worker.seccional,
                     cargo: worker.cargo,
                     alergias: worker.alergias,
-                    contraindicaciones: worker.contraindicaciones,
-                    ano_activo: worker.ano_activo,
+                    contraindicacion: worker.contraindicacion,
+                    "año_activo": worker["año_activo"],
                     estado_servidor: worker.estado_servidor,
                     tipo_vacuna: formData.exactVaccineType || formData.vaccineType
                 };
@@ -261,13 +264,14 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                 worker.schemes.push(created);
             }
 
-            const field = formData.doseNum === 0 ? 'refuerzo_fecha' : `dosis_${formData.doseNum}_fecha`;
+            const field = formData.doseNum === 0 ? 'refuerzo' : `dosis_${formData.doseNum}`;
             const payload: any = {
                 field,
                 value: formData.date,
                 origen: formData.origin,
                 responsable: formData.responsable,
-                isUpdate: isEditing // Pass the isEditing flag as isUpdate
+                isUpdate: isEditing,
+                doseNum: formData.doseNum
             };
             if (formData.observacion) {
                 payload.observacion = formData.observacion;
@@ -295,7 +299,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             // Check if there is already an empty row for this vaccine
             const existingEmpty = worker.schemes.find((s: any) =>
                 s.tipo_vacuna === finalVacuna &&
-                !Boolean(s.dosis_1_fecha || s.dosis_2_fecha || s.dosis_3_fecha || s.dosis_4_fecha || s.dosis_5_fecha || s.refuerzo_fecha)
+                !Boolean(s.dosis_1 || s.dosis_2 || s.dosis_3 || s.dosis_4 || s.dosis_5 || s.refuerzo)
             );
 
             if (existingEmpty) {
@@ -308,14 +312,15 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             }
 
             const newRow = {
-                numero_documento: worker.numero_documento,
+                no_de_documento: worker.no_de_documento,
                 nombres_apellidos: worker.nombres_apellidos,
+                sexo: worker.sexo,
                 regional: worker.regional,
                 seccional: worker.seccional,
                 cargo: worker.cargo,
                 alergias: worker.alergias,
-                contraindicaciones: worker.contraindicaciones,
-                ano_activo: worker.ano_activo,
+                contraindicacion: worker.contraindicacion,
+                "año_activo": worker["año_activo"],
                 estado_servidor: worker.estado_servidor,
                 tipo_vacuna: finalVacuna
             };
@@ -339,14 +344,15 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
         try {
             const updates = {
                 nombres_apellidos: profileFormData.nombres_apellidos,
-                numero_documento: profileFormData.numero_documento,
+                no_de_documento: profileFormData.no_de_documento,
+                sexo: profileFormData.sexo,
                 regional: profileFormData.regional,
                 seccional: profileFormData.seccional,
-                ano_activo: profileFormData.ano_activo,
+                "año_activo": profileFormData["año_activo"],
                 estado_servidor: profileFormData.estado_servidor
             };
 
-            await api.actualizarTrabajadorGlobal(worker.numero_documento, {
+            await api.actualizarTrabajadorGlobal(worker.no_de_documento, {
                 updates,
                 observacion: profileFormData.observacion
             });
@@ -366,10 +372,11 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
     const openProfileEdit = () => {
         setProfileFormData({
             nombres_apellidos: worker.nombres_apellidos || '',
-            numero_documento: worker.numero_documento || '',
+            no_de_documento: worker.no_de_documento || '',
+            sexo: worker.sexo || '',
             regional: worker.regional || '',
             seccional: worker.seccional || '',
-            ano_activo: worker.ano_activo || '',
+            "año_activo": worker["año_activo"] || '',
             estado_servidor: worker.estado_servidor || '',
             observacion: ''
         });
@@ -397,11 +404,11 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                             </div>
                         </div>
                         <p className="text-primary font-bold text-sm tracking-widest leading-none flex items-center gap-2">
-                            <Briefcase size={14} /> {worker.cargo} | <MapPin size={14} /> {worker.regional} — {worker.seccional}
+                            <Briefcase size={14} /> {worker.cargo} | <UserPlus size={14} /> {worker.sexo || 'N/A'} | <MapPin size={14} /> {worker.regional} — {worker.seccional}
                         </p>
                         <div className="flex items-center gap-4 pt-2">
                             <div className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 rounded-xl text-base font-black text-slate-700 dark:text-zinc-300 border-2 border-primary/10 shadow-sm transition-all hover:border-primary/30">
-                                NO DE DOCUMENTO: <span className="text-primary ml-1">{worker.numero_documento}</span>
+                                NO DE DOCUMENTO: <span className="text-primary ml-1">{worker.no_de_documento}</span>
                             </div>
                             <div className={cn(
                                 "px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest",
@@ -415,7 +422,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
             </Card>
 
             {/* Medical Context Section */}
-            {(worker.alergias && worker.alergias.toLowerCase() !== 'sin alergias') || (worker.contraindicaciones && worker.contraindicaciones.toLowerCase() !== 'ninguna') ? (
+            {(worker.alergias && worker.alergias.toLowerCase() !== 'sin alergias') || (worker.contraindicacion && worker.contraindicacion.toLowerCase() !== 'ninguna') ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {worker.alergias && worker.alergias.toLowerCase() !== 'sin alergias' && (
                         <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50 rounded-2xl flex gap-4 animate-slide-in">
@@ -431,7 +438,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                         </div>
                     )}
 
-                    {worker.contraindicaciones && worker.contraindicaciones.toLowerCase() !== 'ninguna' && (
+                    {worker.contraindicacion && worker.contraindicacion.toLowerCase() !== 'ninguna' && (
                         <div className="p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/50 rounded-2xl flex gap-4 animate-slide-in">
                             <div className="p-2 bg-rose-100 dark:bg-rose-500/20 rounded-xl h-fit">
                                 <AlertCircle className="text-rose-600 dark:text-rose-50" size={20} />
@@ -439,7 +446,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                             <div>
                                 <h4 className="font-black text-rose-800 dark:text-rose-400 text-[10px] uppercase tracking-widest mb-1">Contraindicaciones</h4>
                                 <p className="text-[11px] text-rose-700/80 dark:text-rose-300 leading-relaxed font-bold italic">
-                                    {worker.contraindicaciones}
+                                    {worker.contraindicacion}
                                 </p>
                             </div>
                         </div>
@@ -469,7 +476,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                         if (matchingRows.length > 0) {
                             let primaryFound = false;
                             matchingRows.forEach((row: any) => {
-                                const hasDoses = Boolean(row.dosis_1_fecha || row.dosis_2_fecha || row.dosis_3_fecha || row.dosis_4_fecha || row.dosis_5_fecha || row.refuerzo_fecha);
+                                const hasDoses = Boolean(row.dosis_1 || row.dosis_2 || row.dosis_3 || row.dosis_4 || row.dosis_5 || row.refuerzo);
                                 if (!hasDoses && !recentlyAdded.has(row.id)) return;
                                 allSchemesToRender.push({ isConfig: true, config: c, schemeRow: row, isAdditional: primaryFound });
                                 primaryFound = true;
@@ -477,7 +484,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                         }
                     });
                     worker.schemes.filter((s: any) => !configs.find(c => c.tipo_vacuna === s.tipo_vacuna)).forEach((row: any) => {
-                        const hasDoses = Boolean(row.dosis_1_fecha || row.dosis_2_fecha || row.dosis_3_fecha || row.dosis_4_fecha || row.dosis_5_fecha || row.refuerzo_fecha);
+                        const hasDoses = Boolean(row.dosis_1 || row.dosis_2 || row.dosis_3 || row.dosis_4 || row.dosis_5 || row.refuerzo);
                         if (!hasDoses && !recentlyAdded.has(row.id)) return;
                         allSchemesToRender.push({ isConfig: false, config: null, schemeRow: row, isAdditional: false });
                     });
@@ -494,7 +501,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
 
                                 let lastDateIndex = 0;
                                 requiredDosesArray.forEach((d, idx) => {
-                                    if (schemeRow && schemeRow[`dosis_${d}_fecha`]) lastDateIndex = idx + 1;
+                                    if (schemeRow && schemeRow[`dosis_${d}`]) lastDateIndex = idx + 1;
                                 });
 
                                 return (
@@ -539,7 +546,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                                                 <div className="absolute top-6 left-10 right-10 h-[2px] bg-slate-100 dark:bg-zinc-800/50 shadow-inner" />
                                                 <div className="flex justify-between w-full relative z-10">
                                                     {requiredDosesArray.map((d, idx) => {
-                                                        const date = schemeRow ? schemeRow[`dosis_${d}_fecha`] : null;
+                                                        const date = schemeRow ? schemeRow[`dosis_${d}`] : null;
                                                         const isExterno = schemeRow ? schemeRow.origen_aplicacion === 'PRIVADO' : false;
                                                         let stepStatus: 'completed' | 'current' | 'future' | 'navy' = 'future';
                                                         if (date) stepStatus = isExterno ? 'navy' : 'completed';
@@ -559,10 +566,10 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                                                     {(!isConfig || config?.meses_refuerzo) && (
                                                         <TimelineItem
                                                             doseNum={0}
-                                                            date={schemeRow?.refuerzo_fecha}
-                                                            status={schemeRow?.refuerzo_fecha ? 'completed' : (lastDateIndex === requiredDosesArray.length ? 'current' : 'future')}
+                                                            date={schemeRow?.refuerzo}
+                                                            status={schemeRow?.refuerzo ? 'completed' : (lastDateIndex === requiredDosesArray.length ? 'current' : 'future')}
                                                             label="REFUERZO"
-                                                            onEdit={schemeRow?.refuerzo_fecha ? () => openEditModal(schemeRow, tipo_vacuna, 0) : undefined}
+                                                            onEdit={schemeRow?.refuerzo ? () => openEditModal(schemeRow, tipo_vacuna, 0) : undefined}
                                                         />
                                                     )}
                                                 </div>
@@ -627,7 +634,7 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                                 >
                                     <option value="" disabled>Seleccione...</option>
                                     {configs.map(c => {
-                                        const yaRegistrado = worker.schemes.some((s: any) => s.tipo_vacuna === c.tipo_vacuna && (s.dosis_1_fecha || recentlyAdded.has(s.id)));
+                                        const yaRegistrado = worker.schemes.some((s: any) => s.tipo_vacuna === c.tipo_vacuna && (s.dosis_1 || recentlyAdded.has(s.id)));
                                         return <option key={c.tipo_vacuna} value={c.tipo_vacuna} disabled={yaRegistrado}>{c.nombre}</option>;
                                     })}
                                     <option value="OTRA">OTRA (Personalizada)</option>
@@ -707,7 +714,23 @@ const WorkerProfileTimeline: React.FC<{ worker: any }> = ({ worker: initialWorke
                         <form onSubmit={handleProfileEditSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <Input label="Nombres" value={profileFormData.nombres_apellidos} onChange={e => setProfileFormData({ ...profileFormData, nombres_apellidos: e.target.value })} required />
-                                <Input label="Documento" value={profileFormData.numero_documento} onChange={e => setProfileFormData({ ...profileFormData, numero_documento: e.target.value })} required />
+                                <Input label="Documento" value={profileFormData.no_de_documento} onChange={e => setProfileFormData({ ...profileFormData, no_de_documento: e.target.value })} required />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Sexo</label>
+                                    <select
+                                        className="w-full h-11 px-4 rounded-xl text-sm transition-all focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent"
+                                        value={profileFormData.sexo}
+                                        onChange={e => setProfileFormData({ ...profileFormData, sexo: e.target.value })}
+                                        required
+                                    >
+                                        <option value="" disabled>Seleccione sexo...</option>
+                                        <option value="MASCULINO">MASCULINO</option>
+                                        <option value="FEMENINO">FEMENINO</option>
+                                        <option value="OTRO">OTRO</option>
+                                    </select>
+                                </div>
                             </div>
                             {/* Rest of profile form remains standard */}
                             <div className="pt-4 flex justify-end gap-3 border-t dark:border-zinc-800">

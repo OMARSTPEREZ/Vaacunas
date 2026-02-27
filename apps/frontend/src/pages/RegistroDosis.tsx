@@ -7,7 +7,11 @@ import {
     Loader2,
     Eye,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    ChevronDown,
+    ChevronUp,
+    CheckCircle2,
+    Calendar
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
@@ -25,6 +29,19 @@ const RegistroDosis: React.FC = () => {
     const [hasSearched, setHasSearched] = useState(false);
     const [selectedWorker, setSelectedWorker] = useState<any>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [expandedDnis, setExpandedDnis] = useState<Set<string>>(new Set());
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
+    const [totalResults, setTotalResults] = useState(0);
+
+    const toggleExpand = (dni: string) => {
+        const next = new Set(expandedDnis);
+        if (next.has(dni)) next.delete(dni);
+        else next.add(dni);
+        setExpandedDnis(next);
+    };
 
     // Static lists for dropdowns to remove DB dependency
     const regionalesBase = [
@@ -48,14 +65,15 @@ const RegistroDosis: React.FC = () => {
     const [customSeccional, setCustomSeccional] = useState('');
 
     const [newWorker, setNewWorker] = useState({
-        numero_documento: '',
+        no_de_documento: '',
         nombres_apellidos: '',
+        sexo: '',
         regional: '',
         seccional: '',
         cargo: '',
         alergias: '',
-        contraindicaciones: '',
-        ano_activo: new Date().getFullYear(),
+        contraindicacion: '',
+        "año_activo": new Date().getFullYear(),
         estado_servidor: 'activo',
         tipo_vacuna: 'NO_INICIADO'
     });
@@ -68,25 +86,26 @@ const RegistroDosis: React.FC = () => {
         setNewWorker(prev => ({ ...prev, seccional: '' }));
     }, [newWorker.regional]);
 
-    const loadPatients = async (query: string = '') => {
-        if (!query.trim()) {
-            toast.error('Por favor, ingrese un número de documento o nombre');
-            return [];
-        }
+    const loadPatients = async (query: string = '', page: number = 0, size: number = 10) => {
         setLoading(true);
         setHasSearched(true);
         try {
-            const response = await api.buscarPacientes(query ? { query } : {});
+            const from = page * size;
+            const to = from + size - 1;
 
-            const grouped = Object.values((response.data || []).reduce((acc: any, current: any) => {
-                if (!acc[current.numero_documento]) {
-                    acc[current.numero_documento] = { ...current, schemes: [] };
+            const response = await api.buscarPacientes(query && query.trim() ? { query, from, to } : { from, to });
+
+            const groupedMap = (response.data || []).reduce((acc: any, current: any) => {
+                if (!acc[current.no_de_documento]) {
+                    acc[current.no_de_documento] = { ...current, schemes: [] };
                 }
-                acc[current.numero_documento].schemes.push(current);
+                acc[current.no_de_documento].schemes.push(current);
                 return acc;
-            }, {}));
+            }, {});
 
+            const grouped = Object.values(groupedMap);
             setResults(grouped as any[]);
+            setTotalResults(response.count || 0);
             setSelectedWorker(null);
             setIsCreating(false);
             return grouped as any[];
@@ -99,14 +118,36 @@ const RegistroDosis: React.FC = () => {
     };
 
     useEffect(() => {
+        // Skip initial load if we have a DNI from URL, as it has its own logic
+        if (dniFromUrl) return;
+
+        // Reset to page 0 whenever search query changes
+        setCurrentPage(0);
+
+        const debounceTimer = setTimeout(() => {
+            loadPatients(searchQuery, 0, pageSize);
+        }, 500);
+
+        return () => clearTimeout(debounceTimer);
+    }, [searchQuery, pageSize]);
+
+    useEffect(() => {
+        if (hasSearched && !searchQuery.trim()) return; // Prevent loop if just clearing
+        if (currentPage > 0) { // Only trigger for pagination changes
+            loadPatients(searchQuery, currentPage, pageSize);
+        }
+    }, [currentPage]);
+
+    useEffect(() => {
         if (dniFromUrl) {
             setSearchQuery(dniFromUrl);
-            loadPatients(dniFromUrl).then((fetchedResults) => {
-                // If we got exactly one worker (grouped by DNI), select it
+            loadPatients(dniFromUrl, 0, pageSize).then((fetchedResults) => {
                 if (fetchedResults && fetchedResults.length > 0) {
                     setSelectedWorker(fetchedResults[0]);
                 }
             });
+        } else {
+            loadPatients('', 0, pageSize);
         }
     }, [dniFromUrl]);
 
@@ -143,7 +184,7 @@ const RegistroDosis: React.FC = () => {
         <div className="w-full">
             {/* Title Section when viewing timelines or creating to keep context */}
             {(selectedWorker || isCreating) && (
-                <div className="max-w-6xl mx-auto mb-8 flex items-center justify-between animate-in fade-in">
+                <div className="max-w-6xl mx-auto mb-8 flex items-center justify-between animate-in fade-in pt-4">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                             {isCreating ? 'Agregar Trabajador' : 'Perfil de Vacunación'}
@@ -156,7 +197,7 @@ const RegistroDosis: React.FC = () => {
             )}
 
             {!selectedWorker && !isCreating && (
-                <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-bottom-4">
+                <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 pt-12">
                     {/* Title Section */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
                         <div className={!hasSearched ? "w-full text-center" : ""}>
@@ -205,31 +246,30 @@ const RegistroDosis: React.FC = () => {
                         </div>
                     </section>
 
-                    {/* Results Table Section - ONLY VISIBLE IF hasSearched IS TRUE AND THERE ARE RESULTS */}
-                    {hasSearched && !loading && (
-                        <div className="glass-card rounded-2xl overflow-hidden shadow-xl border-slate-200/50 dark:border-white/5 animate-in fade-in slide-in-from-bottom-4 relative z-10">
+                    {/* Results Table Section */}
+                    {hasSearched && (
+                        <div className="glass-card rounded-2xl overflow-hidden shadow-xl border-slate-200/50 dark:border-white/5 relative z-10">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-100/50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">No de documento</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Nombre Completo</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Regional / Seccional</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cargo</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Estado Vacunación</th>
-                                            <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Acciones</th>
+                                        <tr className="bg-slate-100/30 dark:bg-white/5 border-b border-slate-200/50 dark:border-white/10 uppercase font-black text-[11px] tracking-wider text-slate-500">
+                                            <th className="px-6 py-5">No de Documento</th>
+                                            <th className="px-6 py-5">Nombre Completo</th>
+                                            <th className="px-6 py-5">Regional / Seccional</th>
+                                            <th className="px-6 py-5">Cargo</th>
+                                            <th className="px-6 py-5 text-right">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-white/5 bg-white/30 dark:bg-transparent">
                                         {loading ? (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400 font-medium">
+                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400 font-medium">
                                                     <Loader2 className="animate-spin inline-block mr-2" size={20} /> Cargando pacientes...
                                                 </td>
                                             </tr>
                                         ) : results.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center">
+                                                <td colSpan={5} className="px-6 py-12 text-center">
                                                     <p className="text-slate-500 dark:text-slate-400 font-medium mb-4">No se encontraron pacientes en los registros.</p>
                                                     <button
                                                         onClick={() => setIsCreating(true)}
@@ -241,61 +281,223 @@ const RegistroDosis: React.FC = () => {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            results.map(worker => (
-                                                <tr key={worker.id} className="glass-card-hover transition-colors group">
-                                                    <td className="px-6 py-4 text-sm font-black text-slate-700 dark:text-white">
-                                                        {worker.numero_documento}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xs ring-2 ring-transparent group-hover:ring-primary/20 transition-all">
-                                                                {worker.nombres_apellidos?.substring(0, 2).toUpperCase()}
-                                                            </div>
-                                                            <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{worker.nombres_apellidos}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{worker.regional}</div>
-                                                        <div className="text-[11px] font-bold tracking-wider uppercase text-slate-500">{worker.seccional}</div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                                                        {worker.cargo}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${worker.estado_servidor === 'activo'
-                                                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                                                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                                                            }`}>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${worker.estado_servidor === 'activo' ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-rose-500 dark:bg-rose-400 animate-pulse'
-                                                                }`}></span>
-                                                            {worker.estado_servidor === 'activo' ? 'Activo' : 'Vencido'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <button
-                                                            onClick={() => handleSelectWorker(worker)}
-                                                            className="text-[11px] font-black text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all uppercase group-hover:translate-x-1 duration-200 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 rounded-lg"
+                                            results.map(worker => {
+                                                const isExpanded = expandedDnis.has(worker.no_de_documento);
+
+                                                return (
+                                                    <React.Fragment key={worker.id}>
+                                                        <tr
+                                                            className={`transition-all duration-300 border-b border-slate-100 dark:border-white/5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-white/5 ${isExpanded ? 'bg-white dark:bg-zinc-900 shadow-sm' : ''}`}
+                                                            onClick={() => toggleExpand(worker.no_de_documento)}
                                                         >
-                                                            Ver Ficha
-                                                            <Eye size={14} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))
+                                                            <td className="px-6 py-6 font-black text-slate-800 dark:text-white text-base">
+                                                                {worker.no_de_documento}
+                                                            </td>
+                                                            <td className="px-6 py-6">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="font-extrabold text-slate-800 dark:text-white uppercase text-[13px] tracking-tight">
+                                                                        {worker.nombres_apellidos}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-6">
+                                                                <div className="font-black text-slate-800 dark:text-white text-[11px] mb-0.5 uppercase">{worker.regional}</div>
+                                                                <div className="font-bold text-slate-400 dark:text-slate-500 text-[10px] uppercase">{worker.seccional}</div>
+                                                            </td>
+                                                            <td className="px-6 py-6 font-bold text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-tighter">
+                                                                {worker.cargo}
+                                                            </td>
+                                                            <td className="px-6 py-6 text-right">
+                                                                <div className="flex items-center justify-end gap-2">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleSelectWorker(worker); }}
+                                                                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 font-black text-[10px] uppercase tracking-widest hover:bg-orange-100 transition-all border border-orange-200/50 dark:border-orange-500/20"
+                                                                    >
+                                                                        FICHA <Eye size={14} />
+                                                                    </button>
+                                                                    <div className={`ml-2 p-1.5 rounded-lg ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
+                                                                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && (
+                                                            <tr className="bg-slate-50/30 dark:bg-black/10 animate-in fade-in duration-300 border-none">
+                                                                <td colSpan={5} className="px-12 py-10 border-none">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-24">
+                                                                        {/* Esquema de Vacunación */}
+                                                                        <div className="space-y-6">
+                                                                            <h4 className="flex items-center gap-2 text-[11px] font-black text-blue-600 uppercase tracking-[2px]">
+                                                                                <CheckCircle2 size={14} /> Esquema de Vacunación
+                                                                            </h4>
+                                                                            <div className="space-y-5">
+                                                                                {(worker.schemes || []).map((scheme: any, i: number) => {
+                                                                                    const schemeDoses = [
+                                                                                        scheme.dosis_1, scheme.dosis_2,
+                                                                                        scheme.dosis_3, scheme.dosis_4,
+                                                                                        scheme.dosis_5, scheme.refuerzo
+                                                                                    ].filter(Boolean).length;
+
+                                                                                    const totalTarget = scheme.tipo_vacuna === 'TETANOS' ? 6 : (scheme.tipo_vacuna === 'HEPATITIS_B' ? 3 : 1);
+
+                                                                                    let label = scheme.tipo_vacuna;
+                                                                                    if (scheme.tipo_vacuna === 'TETANOS') {
+                                                                                        const variants = new Set<string>();
+                                                                                        ['dosis_1_tipo_vacuna', 'dosis_2_tipo_vacuna', 'dosis_3_tipo_vacuna', 'dosis_4_tipo_vacuna', 'dosis_5_tipo_vacuna', 'refuerzo_tipo_vacuna'].forEach(k => {
+                                                                                            if (scheme[k]) variants.add(scheme[k]);
+                                                                                        });
+                                                                                        if (variants.size > 0) {
+                                                                                            label = `TÉTANOS / ${Array.from(variants).join(' / ')}`;
+                                                                                            if (variants.has('TETANOS') && variants.size === 1) label = 'TÉTANOS';
+                                                                                            else if (!variants.has('TETANOS')) label = Array.from(variants).join(' / ');
+                                                                                        }
+                                                                                    }
+
+                                                                                    return (
+                                                                                        <div key={i} className="space-y-2">
+                                                                                            <div className="flex justify-between items-end">
+                                                                                                <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-tighter">{label}</span>
+                                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase">{schemeDoses} de {totalTarget} dosis</span>
+                                                                                            </div>
+                                                                                            <div className="h-1.5 w-full bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden">
+                                                                                                <div
+                                                                                                    className="h-full bg-blue-600 rounded-full transition-all duration-1000"
+                                                                                                    style={{ width: `${Math.min((schemeDoses / totalTarget) * 100, 100)}%` }}
+                                                                                                />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Últimas Aplicaciones */}
+                                                                        <div className="space-y-6">
+                                                                            <h4 className="flex items-center gap-2 text-[11px] font-black text-blue-600 uppercase tracking-[2px]">
+                                                                                <Calendar size={14} /> ÚLTIMAS APLICACIONES
+                                                                            </h4>
+                                                                            <div className="space-y-4">
+                                                                                {(() => {
+                                                                                    const allDoses: any[] = [];
+                                                                                    (worker.schemes || []).forEach((scheme: any) => {
+                                                                                        [1, 2, 3, 4, 5, 'refuerzo'].forEach(n => {
+                                                                                            const dateKey = n === 'refuerzo' ? 'refuerzo' : `dosis_${n}`;
+                                                                                            const typeKey = n === 'refuerzo' ? 'refuerzo_tipo_vacuna' : `dosis_${n}_tipo_vacuna`;
+                                                                                            if (scheme[dateKey]) {
+                                                                                                allDoses.push({
+                                                                                                    date: scheme[dateKey],
+                                                                                                    type: scheme[typeKey] || scheme.tipo_vacuna,
+                                                                                                    num: n === 'refuerzo' ? 'R' : n
+                                                                                                });
+                                                                                            }
+                                                                                        });
+                                                                                    });
+
+                                                                                    const latestDosesMap = new Map<string, any>();
+                                                                                    allDoses.forEach(dose => {
+                                                                                        const existing = latestDosesMap.get(dose.type);
+                                                                                        if (!existing || new Date(dose.date) > new Date(existing.date)) {
+                                                                                            latestDosesMap.set(dose.type, dose);
+                                                                                        }
+                                                                                    });
+
+                                                                                    const sortedDoses = Array.from(latestDosesMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                                                                                    return (
+                                                                                        <>
+                                                                                            {sortedDoses.map((dose, idx) => (
+                                                                                                <div key={idx} className="flex justify-between items-center group">
+                                                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight group-hover:text-slate-600 transition-colors">
+                                                                                                        {dose.type} (D{dose.num})
+                                                                                                    </span>
+                                                                                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300">
+                                                                                                        {new Date(dose.date).toLocaleDateString()}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                            {sortedDoses.length === 0 && (
+                                                                                                <div className="text-[10px] font-bold text-slate-400 italic">Sin registros de aplicación</div>
+                                                                                            )}
+                                                                                        </>
+                                                                                    );
+                                                                                })()}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })
                                         )}
                                     </tbody>
                                 </table>
                             </div>
 
                             {/* Footer/Pagination */}
-                            <div className="bg-slate-50/80 dark:bg-white/5 px-6 py-4 border-t border-slate-200 dark:border-white/10 flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Mostrando {results.length} resultados</span>
+                            <div className="bg-slate-50/80 dark:bg-white/5 px-6 py-4 border-t border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Total: {totalResults} personas
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Mostrar:</span>
+                                        <select
+                                            value={pageSize}
+                                            onChange={(e) => {
+                                                setPageSize(Number(e.target.value));
+                                                setCurrentPage(0);
+                                            }}
+                                            className="bg-transparent border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-1 focus:ring-primary/30"
+                                        >
+                                            <option value={10}>10</option>
+                                            <option value={20}>20</option>
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div className="flex items-center gap-2">
-                                    <button className="w-8 h-8 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/50 transition-all disabled:opacity-30" disabled={true}>
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                                        disabled={currentPage === 0 || loading}
+                                        className="w-8 h-8 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
                                         <ChevronLeft size={16} />
                                     </button>
-                                    <button className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-primary/30">1</button>
-                                    <button className="w-8 h-8 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/50 transition-all">
+
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: Math.min(5, Math.ceil(totalResults / pageSize)) }, (_, i) => {
+                                            const totalPages = Math.ceil(totalResults / pageSize);
+                                            let pageNum = i;
+                                            if (totalPages > 5) {
+                                                if (currentPage > 2) pageNum = Math.min(currentPage - 2 + i, totalPages - 5 + i);
+                                            }
+
+                                            if (pageNum >= totalPages) return null;
+
+                                            return (
+                                                <button
+                                                    key={pageNum}
+                                                    onClick={() => setCurrentPage(pageNum)}
+                                                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === pageNum
+                                                        ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                                                        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5'
+                                                        }`}
+                                                >
+                                                    {pageNum + 1}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <button
+                                        onClick={() => setCurrentPage(prev => prev + 1)}
+                                        disabled={(currentPage + 1) * pageSize >= totalResults || loading}
+                                        className="w-8 h-8 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
                                         <ChevronRight size={16} />
                                     </button>
                                 </div>
@@ -306,121 +508,137 @@ const RegistroDosis: React.FC = () => {
             )}
 
             {isCreating && (
-                <Card className="max-w-3xl mx-auto glass-card animate-in slide-in-from-bottom-4 relative z-10">
-                    <div className="flex items-center gap-4 mb-8">
-                        <div className="p-3 bg-primary/10 rounded-2xl">
-                            <UserPlus className="text-primary" size={24} />
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-black uppercase italic tracking-tighter">Crear Nuevo Trabajador</h3>
-                            <p className="text-sm text-slate-500 uppercase tracking-widest font-bold opacity-60">Ficha de ingreso institucional</p>
-                        </div>
-                    </div>
-                    <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateWorker}>
-                        <Input
-                            label="No de documento"
-                            placeholder="Ej: 1022..."
-                            required
-                            value={newWorker.numero_documento}
-                            onChange={(e) => setNewWorker({ ...newWorker, numero_documento: e.target.value })}
-                        />
-                        <Input
-                            label="Nombres y Apellidos"
-                            placeholder="Nombre completo"
-                            required
-                            value={newWorker.nombres_apellidos}
-                            onChange={(e) => setNewWorker({ ...newWorker, nombres_apellidos: e.target.value })}
-                        />
-                        <div className="md:col-span-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Regional</label>
-                            <select
-                                className="w-full h-11 px-4 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent text-slate-800 dark:text-white"
-                                value={newWorker.regional}
-                                onChange={(e) => setNewWorker({ ...newWorker, regional: e.target.value })}
-                                required
-                            >
-                                <option value="" disabled className="bg-white dark:bg-zinc-900">Seleccione regional...</option>
-                                {regionalesBase.map(r => (
-                                    <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
-                                ))}
-                                <option value="OTRA" className="bg-white dark:bg-zinc-900 font-bold bg-slate-50">OTRA (Escribir nueva...)</option>
-                            </select>
-                        </div>
-                        <div className="md:col-span-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Seccional</label>
-                            <select
-                                className="w-full h-11 px-4 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent text-slate-800 dark:text-white"
-                                value={newWorker.seccional}
-                                onChange={(e) => setNewWorker({ ...newWorker, seccional: e.target.value })}
-                                required
-                            >
-                                <option value="" disabled className="bg-white dark:bg-zinc-900">Seleccione seccional...</option>
-                                {seccionalesBase.map(s => (
-                                    <option key={s} value={s} className="bg-white dark:bg-zinc-900">{s}</option>
-                                ))}
-                                <option value="OTRA" className="bg-white dark:bg-zinc-900 font-bold bg-slate-50">OTRA (Escribir nueva...)</option>
-                            </select>
-                        </div>
-                        {newWorker.regional === 'OTRA' && (
-                            <div className="md:col-span-1">
-                                <Input
-                                    label="Dígite el nombre de la Regional"
-                                    placeholder="Ej: Antioquia"
-                                    value={customRegional}
-                                    onChange={(e) => setCustomRegional(e.target.value)}
-                                    required={newWorker.regional === 'OTRA'}
-                                />
+                <div className="max-w-3xl mx-auto animate-in slide-in-from-bottom-4 relative z-10 pt-12 pb-12">
+                    <Card className="glass-card p-10">
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="p-3 bg-primary/10 rounded-2xl">
+                                <UserPlus className="text-primary" size={24} />
                             </div>
-                        )}
-                        {newWorker.seccional === 'OTRA' && (
-                            <div className="md:col-span-1">
-                                <Input
-                                    label="Dígite el nombre de la Seccional"
-                                    placeholder="Ej: Medellín"
-                                    value={customSeccional}
-                                    onChange={(e) => setCustomSeccional(e.target.value)}
-                                    required={newWorker.seccional === 'OTRA'}
-                                />
+                            <div>
+                                <h3 className="text-xl font-black uppercase italic tracking-tighter">Crear Nuevo Trabajador</h3>
+                                <p className="text-sm text-slate-500 uppercase tracking-widest font-bold opacity-60">Ficha de ingreso institucional</p>
                             </div>
-                        )}
-                        <Input
-                            label="Cargo"
-                            placeholder="Puesto de trabajo"
-                            required
-                            value={newWorker.cargo}
-                            onChange={(e) => setNewWorker({ ...newWorker, cargo: e.target.value })}
-                        />
-                        <div className="md:col-span-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Alergias (Obligatorio)</label>
-                            <textarea
-                                className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-sm min-h-[80px] font-medium"
-                                placeholder="Si no tiene, escriba 'Sin alergias'"
+                        </div>
+                        <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleCreateWorker}>
+                            <Input
+                                label="No de documento"
+                                placeholder="Ej: 1022..."
                                 required
-                                value={newWorker.alergias}
-                                onChange={(e) => setNewWorker({ ...newWorker, alergias: e.target.value })}
-                            ></textarea>
-                        </div>
-                        <div className="md:col-span-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Contraindicaciones</label>
-                            <textarea
-                                className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-sm min-h-[80px] font-medium"
-                                placeholder="Ej: Antecedente de reacción adversa..."
-                                value={(newWorker as any).contraindicaciones || ''}
-                                onChange={(e) => setNewWorker({ ...newWorker, ['contraindicaciones']: e.target.value } as any)}
-                            ></textarea>
-                        </div>
-                        <div className="md:col-span-2 flex justify-end gap-3 mt-4">
-                            <Button variant="ghost" type="button" onClick={() => setIsCreating(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={loading} className="px-8 shadow-lg shadow-primary/30">
-                                {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : 'Guardar y Continuar'}
-                            </Button>
-                        </div>
-                    </form>
-                </Card>
+                                value={newWorker.no_de_documento}
+                                onChange={(e) => setNewWorker({ ...newWorker, no_de_documento: e.target.value })}
+                            />
+                            <Input
+                                label="Nombres y Apellidos"
+                                placeholder="Nombre completo"
+                                required
+                                value={newWorker.nombres_apellidos}
+                                onChange={(e) => setNewWorker({ ...newWorker, nombres_apellidos: e.target.value })}
+                            />
+                            <div className="md:col-span-1">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Sexo</label>
+                                <select
+                                    className="w-full h-11 px-4 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent text-slate-800 dark:text-white"
+                                    value={newWorker.sexo}
+                                    onChange={(e) => setNewWorker({ ...newWorker, sexo: e.target.value })}
+                                    required
+                                >
+                                    <option value="" disabled className="bg-white dark:bg-zinc-900">Seleccione sexo...</option>
+                                    <option value="MASCULINO" className="bg-white dark:bg-zinc-900">MASCULINO</option>
+                                    <option value="FEMENINO" className="bg-white dark:bg-zinc-900">FEMENINO</option>
+                                    <option value="OTRO" className="bg-white dark:bg-zinc-900">OTRO</option>
+                                </select>
+                            </div>
+                            <div className="md:col-span-1">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Regional</label>
+                                <select
+                                    className="w-full h-11 px-4 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent text-slate-800 dark:text-white"
+                                    value={newWorker.regional}
+                                    onChange={(e) => setNewWorker({ ...newWorker, regional: e.target.value })}
+                                    required
+                                >
+                                    <option value="" disabled className="bg-white dark:bg-zinc-900">Seleccione regional...</option>
+                                    {regionalesBase.map(r => (
+                                        <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
+                                    ))}
+                                    <option value="OTRA" className="bg-white dark:bg-zinc-900 font-bold bg-slate-50">OTRA (Escribir nueva...)</option>
+                                </select>
+                            </div>
+                            <div className="md:col-span-1">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Seccional</label>
+                                <select
+                                    className="w-full h-11 px-4 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-primary/30 border border-slate-200 dark:border-zinc-800 bg-transparent text-slate-800 dark:text-white"
+                                    value={newWorker.seccional}
+                                    onChange={(e) => setNewWorker({ ...newWorker, seccional: e.target.value })}
+                                    required
+                                >
+                                    <option value="" disabled className="bg-white dark:bg-zinc-900">Seleccione seccional...</option>
+                                    {seccionalesBase.map(s => (
+                                        <option key={s} value={s} className="bg-white dark:bg-zinc-900">{s}</option>
+                                    ))}
+                                    <option value="OTRA" className="bg-white dark:bg-zinc-900 font-bold bg-slate-50">OTRA (Escribir nueva...)</option>
+                                </select>
+                            </div>
+                            {newWorker.regional === 'OTRA' && (
+                                <div className="md:col-span-1">
+                                    <Input
+                                        label="Dígite el nombre de la Regional"
+                                        placeholder="Ej: Antioquia"
+                                        value={customRegional}
+                                        onChange={(e) => setCustomRegional(e.target.value)}
+                                        required={newWorker.regional === 'OTRA'}
+                                    />
+                                </div>
+                            )}
+                            {newWorker.seccional === 'OTRA' && (
+                                <div className="md:col-span-1">
+                                    <Input
+                                        label="Dígite el nombre de la Seccional"
+                                        placeholder="Ej: Medellín"
+                                        value={customSeccional}
+                                        onChange={(e) => setCustomSeccional(e.target.value)}
+                                        required={newWorker.seccional === 'OTRA'}
+                                    />
+                                </div>
+                            )}
+                            <Input
+                                label="Cargo"
+                                placeholder="Puesto de trabajo"
+                                required
+                                value={newWorker.cargo}
+                                onChange={(e) => setNewWorker({ ...newWorker, cargo: e.target.value })}
+                            />
+                            <div className="md:col-span-1">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Alergias (Obligatorio)</label>
+                                <textarea
+                                    className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-sm min-h-[80px] font-medium"
+                                    placeholder="Si no tiene, escriba 'Sin alergias'"
+                                    required
+                                    value={newWorker.alergias}
+                                    onChange={(e) => setNewWorker({ ...newWorker, alergias: e.target.value })}
+                                ></textarea>
+                            </div>
+                            <div className="md:col-span-1">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] block mb-2 px-1">Contraindicaciones</label>
+                                <textarea
+                                    className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-sm min-h-[80px] font-medium"
+                                    placeholder="Ej: Antecedente de reacción adversa..."
+                                    value={newWorker.contraindicacion || ''}
+                                    onChange={(e) => setNewWorker({ ...newWorker, contraindicacion: e.target.value })}
+                                ></textarea>
+                            </div>
+                            <div className="md:col-span-2 flex justify-end gap-3 mt-4">
+                                <Button variant="ghost" type="button" onClick={() => setIsCreating(false)}>Cancelar</Button>
+                                <Button type="submit" disabled={loading} className="px-8 shadow-lg shadow-primary/30">
+                                    {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : 'Guardar y Continuar'}
+                                </Button>
+                            </div>
+                        </form>
+                    </Card>
+                </div>
             )}
 
-            {selectedWorker && (
-                <div className="animate-in slide-in-from-bottom-4 max-w-6xl mx-auto">
+            {selectedWorker && !isCreating && (
+                <div className="animate-in slide-in-from-bottom-4 max-w-6xl mx-auto pb-12">
                     <WorkerProfileTimeline worker={selectedWorker} />
                 </div>
             )}
@@ -429,3 +647,4 @@ const RegistroDosis: React.FC = () => {
 };
 
 export default RegistroDosis;
+

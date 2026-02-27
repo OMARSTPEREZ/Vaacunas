@@ -6,7 +6,7 @@ export const api = {
         let dbQuery = supabase.from('pacientes_vacunacion').select('*', { count: 'exact' });
 
         if (filters.query) {
-            dbQuery = dbQuery.or(`numero_documento.ilike.%${filters.query}%,nombres_apellidos.ilike.%${filters.query}%`);
+            dbQuery = dbQuery.or(`no_de_documento.ilike.%${filters.query}%,nombres_apellidos.ilike.%${filters.query}%`);
         }
         if (filters.regional) dbQuery = dbQuery.eq('regional', filters.regional);
         if (filters.seccional) dbQuery = dbQuery.eq('seccional', filters.seccional);
@@ -37,7 +37,7 @@ export const api = {
             // Group TETANOS, DPT, DT into a single unified timeline scheme
             const groupsByDni = new Map<string, any[]>();
             processedData.forEach((item: any) => {
-                const dni = item.numero_documento;
+                const dni = item.no_de_documento;
                 if (!groupsByDni.has(dni)) groupsByDni.set(dni, []);
                 groupsByDni.get(dni)!.push(item);
             });
@@ -51,12 +51,21 @@ export const api = {
                 if (tetanoRows.length > 0) {
                     const allDoses: any[] = [];
                     tetanoRows.forEach(r => {
-                        if (r.dosis_1_fecha) allDoses.push({ row: r, field: 'dosis_1_fecha', date: r.dosis_1_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
-                        if (r.dosis_2_fecha) allDoses.push({ row: r, field: 'dosis_2_fecha', date: r.dosis_2_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
-                        if (r.dosis_3_fecha) allDoses.push({ row: r, field: 'dosis_3_fecha', date: r.dosis_3_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
-                        if (r.dosis_4_fecha) allDoses.push({ row: r, field: 'dosis_4_fecha', date: r.dosis_4_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
-                        if (r.dosis_5_fecha) allDoses.push({ row: r, field: 'dosis_5_fecha', date: r.dosis_5_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
-                        if (r.refuerzo_fecha) allDoses.push({ row: r, field: 'refuerzo_fecha', date: r.refuerzo_fecha, type: r.tipo_vacuna, origin: r.origen_aplicacion || '' });
+                        [1, 2, 3, 4, 5, 'refuerzo'].forEach(n => {
+                            const dateKey = n === 'refuerzo' ? 'refuerzo' : `dosis_${n}`;
+                            const typeKey = n === 'refuerzo' ? 'refuerzo_tipo_vacuna' : `dosis_${n}_tipo_vacuna`;
+                            const procKey = n === 'refuerzo' ? 'procedencia_refuerzo' : `procedencia_${n}`;
+
+                            if (r[dateKey]) {
+                                allDoses.push({
+                                    row: r,
+                                    field: dateKey,
+                                    date: r[dateKey],
+                                    type: r[typeKey] || r.tipo_vacuna,
+                                    origin: r[procKey] || r.origen_aplicacion || ''
+                                });
+                            }
+                        });
                     });
 
                     allDoses.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -76,15 +85,16 @@ export const api = {
                     const primaryRowOriginal = tetanoRows.find(r => r.tipo_vacuna === 'TETANOS') || tetanoRows[0];
                     const primaryRow = { ...primaryRowOriginal, tipo_vacuna: 'TETANOS' };
 
-                    primaryRow.dosis_1_fecha = null; primaryRow.dosis_2_fecha = null;
-                    primaryRow.dosis_3_fecha = null; primaryRow.dosis_4_fecha = null;
-                    primaryRow.dosis_5_fecha = null; primaryRow.refuerzo_fecha = null;
+                    primaryRow.dosis_1 = null; primaryRow.dosis_2 = null;
+                    primaryRow.dosis_3 = null; primaryRow.dosis_4 = null;
+                    primaryRow.dosis_5 = null; primaryRow.refuerzo = null;
 
-                    const slots = ['dosis_1_fecha', 'dosis_2_fecha', 'dosis_3_fecha', 'dosis_4_fecha', 'dosis_5_fecha', 'refuerzo_fecha'];
+                    const slots = ['dosis_1', 'dosis_2', 'dosis_3', 'dosis_4', 'dosis_5', 'refuerzo'];
                     mainDoses.forEach((m, i) => {
                         primaryRow[slots[i]] = m.date;
-                        primaryRow[slots[i].replace('_fecha', '_tipo_vacuna')] = m.type;
-                        if (i === 0) primaryRow.origen_aplicacion = m.origin;
+                        primaryRow[slots[i] + '_tipo_vacuna'] = m.type;
+                        const procKey = slots[i].includes('refuerzo') ? 'procedencia_refuerzo' : `procedencia_${i + 1}`;
+                        primaryRow[procKey] = m.origin;
                     });
 
                     mergedData.push(primaryRow);
@@ -93,11 +103,15 @@ export const api = {
                         const leftoverDoses = allDoses.filter(d => d.row === r && !d.consumed);
                         if (leftoverDoses.length > 0) {
                             const leftoverRow = { ...r, id: r.id + '_extra' };
-                            leftoverRow.dosis_1_fecha = null; leftoverRow.dosis_2_fecha = null;
-                            leftoverRow.dosis_3_fecha = null; leftoverRow.dosis_4_fecha = null;
-                            leftoverRow.dosis_5_fecha = null; leftoverRow.refuerzo_fecha = null;
+                            leftoverRow.dosis_1 = null; leftoverRow.dosis_2 = null;
+                            leftoverRow.dosis_3 = null; leftoverRow.dosis_4 = null;
+                            leftoverRow.dosis_5 = null; leftoverRow.refuerzo = null;
                             leftoverDoses.forEach((d, idx) => {
-                                if (idx < slots.length) leftoverRow[slots[idx]] = d.date;
+                                if (idx < slots.length) {
+                                    leftoverRow[slots[idx]] = d.date;
+                                    const procKey = slots[idx].includes('refuerzo') ? 'procedencia_refuerzo' : `procedencia_${idx + 1}`;
+                                    leftoverRow[procKey] = d.origin;
+                                }
                             });
                             mergedData.push(leftoverRow);
                         }
@@ -109,8 +123,8 @@ export const api = {
         }
 
         processedData.sort((a: any, b: any) => {
-            const aHasDose = a.dosis_1_fecha || a.dosis_2_fecha || a.dosis_3_fecha || a.dosis_4_fecha || a.dosis_5_fecha || a.refuerzo_fecha;
-            const bHasDose = b.dosis_1_fecha || b.dosis_2_fecha || b.dosis_3_fecha || b.dosis_4_fecha || b.dosis_5_fecha || b.refuerzo_fecha;
+            const aHasDose = a.dosis_1 || a.dosis_2 || a.dosis_3 || a.dosis_4 || a.dosis_5 || a.refuerzo;
+            const bHasDose = b.dosis_1 || b.dosis_2 || b.dosis_3 || b.dosis_4 || b.dosis_5 || b.refuerzo;
             return (bHasDose ? 1 : 0) - (aHasDose ? 1 : 0);
         });
 
@@ -125,18 +139,27 @@ export const api = {
             .single();
 
         if (error) throw error;
-        auditService.trackAction('CREAR_TRABAJADOR', `Worker ID: ${result.id}`, data);
+        auditService.trackAction('CREAR_TRABAJADOR', 'pacientes_vacunacion', result.id, { valor_nuevo: data });
         return result;
     },
 
     async registrarDosis(workerId: string, doseData: any) {
-        const { field, value, origen, responsable, observacion, isUpdate } = doseData;
+        const { field, value, origen, responsable, observacion, isUpdate, doseNum } = doseData;
+
+        // Map to correct procedencia column
+        const procField = doseNum === 0 ? 'procedencia_refuerzo' : `procedencia_${doseNum}`;
+
         const updateData: any = {
             [field]: value,
-            origen_aplicacion: origen,
+            [procField]: origen,
             responsable_enfermeria: responsable
         };
-        if (observacion !== undefined) updateData.observacion = observacion;
+
+        // Map observation to specific dose column
+        if (observacion !== undefined) {
+            const obsField = doseNum === 0 ? 'refuerzo_obs' : `dosis_${doseNum}_obs`;
+            updateData[obsField] = observacion;
+        }
 
         const { data: result, error } = await supabase
             .from('pacientes_vacunacion')
@@ -148,7 +171,10 @@ export const api = {
         if (error) throw error;
 
         const auditAction = isUpdate ? 'MODIFICAR_DOSIS' : 'REGISTRAR_DOSIS';
-        auditService.trackAction(auditAction, `Worker ID: ${workerId}`, doseData);
+        auditService.trackAction(auditAction, 'pacientes_vacunacion', workerId, {
+            valor_nuevo: updateData,
+            detalles: `Dosis: ${doseNum}, Campo: ${field}`
+        });
         return result;
     },
 
@@ -156,11 +182,14 @@ export const api = {
         const { data: result, error } = await supabase
             .from('pacientes_vacunacion')
             .update(data.updates)
-            .eq('numero_documento', dni)
+            .eq('no_de_documento', dni)
             .select();
 
         if (error) throw error;
-        auditService.trackAction('EDITAR_TRABAJADOR', `Doc: ${dni}`, data);
+        auditService.trackAction('EDITAR_TRABAJADOR', 'pacientes_vacunacion', dni, {
+            valor_nuevo: data.updates,
+            detalles: data.observacion
+        });
         return result;
     },
 
@@ -187,7 +216,7 @@ export const api = {
             .single();
 
         if (error) throw error;
-        auditService.trackAction('UPDATE_CONFIG_VACUNA', `Config ID: ${id}`, updates);
+        auditService.trackAction('UPDATE_CONFIG_VACUNA', 'configuracion_vacunas', id, { valor_nuevo: updates });
         return result;
     },
 
@@ -243,10 +272,10 @@ export const api = {
     async getUniquePacientesCount() {
         const { data, error } = await supabase
             .from('pacientes_vacunacion')
-            .select('numero_documento');
+            .select('no_de_documento');
         if (error) throw error;
 
-        const uniqueDocs = new Set(data.map(p => p.numero_documento));
+        const uniqueDocs = new Set(data.map(p => p.no_de_documento));
         return uniqueDocs.size;
     }
 };

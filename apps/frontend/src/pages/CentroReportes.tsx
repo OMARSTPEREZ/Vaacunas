@@ -115,8 +115,8 @@ const CentroReportes: React.FC = () => {
     const applyDatesAndYearFilter = (items: any[]) => {
         return items.filter(p => {
             const dates = [
-                p.dosis_1_fecha, p.dosis_2_fecha, p.dosis_3_fecha,
-                p.dosis_4_fecha, p.dosis_5_fecha, p.refuerzo_fecha
+                p.dosis_1, p.dosis_2, p.dosis_3,
+                p.dosis_4, p.dosis_5, p.refuerzo
             ].filter(Boolean) as string[];
 
             const matchDateRange = (!filters.startDate && !filters.endDate) || dates.some(d => {
@@ -138,10 +138,51 @@ const CentroReportes: React.FC = () => {
             return;
         }
 
-        const processed = dataset.map(p => ({
-            ...p,
-            estado_cobertura_calculado: getEstado(p),
-        }));
+        // Define the desired column order and labels mapping
+        const columnMap = [
+            { key: 'id', label: 'id uuid' },
+            { key: 'regional', label: 'regional' },
+            { key: 'seccional', label: 'seccional' },
+            { key: 'estado_servidor', label: 'estado_servidor' },
+            { key: 'año_activo', label: 'año_activo' },
+            { key: 'no_de_documento', label: 'no_de_documento' },
+            { key: 'nombres_apellidos', label: 'nombres_apellidos' },
+            { key: 'sexo', label: 'sexo' },
+            { key: 'cargo', label: 'cargo' },
+            { key: 'tipo_vacuna', label: 'tipo_vacuna' },
+            { key: 'dosis_1', label: 'dosis_1' },
+            { key: 'procedencia_1', label: 'procedencia_1' },
+            { key: 'dosis_1_obs', label: 'dosis_1_obs' },
+            { key: 'dosis_2', label: 'dosis_2' },
+            { key: 'procedencia_2', label: 'procedencia_2' },
+            { key: 'dosis_2_obs', label: 'dosis_2_obs' },
+            { key: 'dosis_3', label: 'dosis_3' },
+            { key: 'procedencia_3', label: 'procedencia_3' },
+            { key: 'dosis_3_obs', label: 'dosis_3_obs' },
+            { key: 'dosis_4', label: 'dosis_4' },
+            { key: 'procedencia_4', label: 'procedencia_4' },
+            { key: 'dosis_4_obs', label: 'dosis_4_obs' },
+            { key: 'dosis_5', label: 'dosis_5' },
+            { key: 'procedencia_5', label: 'procedencia_5' },
+            { key: 'dosis_5_obs', label: 'dosis_5_obs' },
+            { key: 'refuerzo', label: 'refuerzo' },
+            { key: 'procedencia_refuerzo', label: 'procedencia_refuerzo' },
+            { key: 'refuerzo_obs', label: 'refuerzo_obs' },
+            { key: 'alergias', label: 'alergias' },
+            { key: 'contraindicacion', label: 'contraindicacion' },
+            { key: 'validacion manual observación', label: 'validacion manual observación' },
+            { key: 'validación automática', label: 'validación automática' },
+            { key: 'creado_por', label: 'creado_por' }
+        ];
+
+        const processed = dataset.map(p => {
+            const row: any = {};
+            columnMap.forEach(col => {
+                row[col.label] = p[col.key];
+            });
+            row['Estado Cobertura'] = getEstado(p);
+            return row;
+        });
 
         const ws = XLSX.utils.json_to_sheet(processed);
         const wb = XLSX.utils.book_new();
@@ -331,17 +372,17 @@ const CentroReportes: React.FC = () => {
                                     ))
                                 ) : displayedData.map((p) => {
                                     const estado = getEstado(p);
-                                    const dates = [p.dosis_1_fecha, p.dosis_2_fecha, p.dosis_3_fecha, p.dosis_4_fecha, p.dosis_5_fecha, p.refuerzo_fecha].filter(Boolean) as string[];
+                                    const dates = [p.dosis_1, p.dosis_2, p.dosis_3, p.dosis_4, p.dosis_5, p.refuerzo].filter(Boolean) as string[];
                                     const lastDate = dates.length > 0 ? dates[dates.length - 1].split('T')[0] : '-';
 
                                     return (
                                         <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors">
                                             <td className="px-4 py-3 text-center">
-                                                <Link to={`/registro?dni=${p.numero_documento}`} className="text-primary hover:text-primary-dark transition-colors inline-block">
+                                                <Link to={`/registro?dni=${p.no_de_documento}`} className="text-primary hover:text-primary-dark transition-colors inline-block">
                                                     <ExternalLink size={16} />
                                                 </Link>
                                             </td>
-                                            <td className="px-4 py-3 font-medium">{p.numero_documento}</td>
+                                            <td className="px-4 py-3 font-medium">{p.no_de_documento}</td>
                                             <td className="px-4 py-3">
                                                 <div className="font-semibold">{p.nombres_apellidos}</div>
                                             </td>
@@ -352,7 +393,7 @@ const CentroReportes: React.FC = () => {
                                             <td className="px-4 py-3 text-center">
                                                 <div className="flex justify-center gap-0.5">
                                                     {[1, 2, 3, 4, 5].map(d => (
-                                                        <div key={d} className={`w-1.5 h-1.5 rounded-full ${p[`dosis_${d}_fecha`] ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-zinc-700'}`} />
+                                                        <div key={d} className={`w-1.5 h-1.5 rounded-full ${p[`dosis_${d}`] ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-zinc-700'}`} />
                                                     ))}
                                                 </div>
                                             </td>
