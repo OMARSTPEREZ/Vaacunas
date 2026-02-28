@@ -6,7 +6,8 @@ import {
     AlertTriangle,
     ChevronLeft,
     ChevronRight,
-    ExternalLink
+    ExternalLink,
+    Database
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
@@ -20,8 +21,9 @@ const CentroReportes: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
     const [totalCount, setTotalCount] = useState(0);
-    const [hasSearched, setHasSearched] = useState(false);
     const [page, setPage] = useState(0);
+    const [hasSearched, setHasSearched] = useState(true);
+    const [updatingBulk, setUpdatingBulk] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [regionales, setRegionales] = useState<string[]>([]);
@@ -96,10 +98,22 @@ const CentroReportes: React.FC = () => {
     }, [page, searchQuery, filters.regional, filters.seccional, filters.vacuna]);
 
     useEffect(() => {
-        if (searchQuery || filters.regional || filters.seccional || filters.vacuna || filters.startDate || filters.endDate || filters.year) {
-            fetchData();
-        }
+        fetchData();
     }, [fetchData]);
+
+    const handleBulkUpdate = async () => {
+        setUpdatingBulk(true);
+        const loadingToast = toast.loading('Recalculando todas las validaciones...');
+        try {
+            const result = await api.bulkUpdateValidations();
+            toast.success(`Se actualizaron ${result.count} registros`, { id: loadingToast });
+            fetchData();
+        } catch (error: any) {
+            toast.error('Error: ' + error.message, { id: loadingToast });
+        } finally {
+            setUpdatingBulk(false);
+        }
+    };
 
     useEffect(() => {
         fetchOptions(filters.regional || undefined);
@@ -249,6 +263,16 @@ const CentroReportes: React.FC = () => {
                 </div>
                 {hasSearched && (
                     <div className="flex items-center gap-2 flex-wrap animate-in fade-in">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleBulkUpdate}
+                            disabled={updatingBulk}
+                            className="border-primary/20"
+                        >
+                            <Database size={14} className={`mr-2 ${updatingBulk ? 'animate-spin' : ''}`} />
+                            {updatingBulk ? 'Procesando...' : 'Recalcular Validaciones'}
+                        </Button>
                         <Button variant="outline" size="sm" onClick={exportSelection}>
                             <Download size={14} className="mr-2" /> Selección
                         </Button>
@@ -262,7 +286,7 @@ const CentroReportes: React.FC = () => {
                 )}
             </div>
 
-            <Card className={`p-6 transition-all shadow-xl bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md ${!hasSearched ? "max-w-4xl mx-auto border-2 border-primary/20 p-10" : "p-4"}`}>
+            <Card className="p-4 transition-all shadow-xl bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-3 gap-6 items-end">
                     <div className="lg:col-span-2 xl:col-span-3">
                         <Input

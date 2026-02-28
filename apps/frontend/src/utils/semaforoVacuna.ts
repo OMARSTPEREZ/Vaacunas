@@ -85,20 +85,28 @@ export function getEstadoVacuna(paciente: PacienteData, tipoVacuna: TipoVacuna, 
                 const intervalMonths = config.intervalos[i - 1] || 1;
                 let expectedDate = addMonths(previousDose, intervalMonths);
                 const statusObj = checkStatus(expectedDate);
-
-                const dateStr = expectedDate.toISOString().split('T')[0];
-                return { ...statusObj, detalle: `Pendiente Dosis ${i + 1} (${dateStr})` };
+                return { ...statusObj, detalle: `Pendiente Dosis ${i + 1}` };
             }
         }
 
         // Booster logic
         if (config.meses_refuerzo) {
             const lastDoseDate = dosisTodas[config.dosis_requeridas - 1] as Date;
+
+            // If booster is present, we consider it complete (unless it's Influenza/recurring)
+            if (ref && config.tipo_vacuna !== 'INFLUENZA') {
+                return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema completo' };
+            }
+
             const proximoRefuerzo = ref ? addMonths(ref, config.meses_refuerzo) : addMonths(lastDoseDate, config.meses_refuerzo);
-            return { ...checkStatus(proximoRefuerzo), detalle: ref ? 'Refuerzo vigente' : `Esquema completo, refuerzo pendiente (${addMonths(lastDoseDate, config.meses_refuerzo).toISOString().split('T')[0]})` };
+            const status = checkStatus(proximoRefuerzo);
+            return {
+                ...status,
+                detalle: ref ? 'Esquema completo' : 'Esquema completo, refuerzo pendiente'
+            };
         }
 
-        return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema Vigente' };
+        return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema completo' };
     }
 
     // Fallback to hardcoded logic if no config provided yet (for backward compatibility during migration)
@@ -107,12 +115,12 @@ export function getEstadoVacuna(paciente: PacienteData, tipoVacuna: TipoVacuna, 
         case 'DPT':
         case 'DT': {
             if (!d1) return { estado: 'ROJO', proximaDosis: hoy, detalle: 'Falta Dosis 1' };
-            if (!d2) return { ...checkStatus(addMonths(d1, 1)), detalle: `Pendiente Dosis 2 (${addMonths(d1, 1).toISOString().split('T')[0]})` };
-            if (!d3) return { ...checkStatus(addMonths(d2, 6)), detalle: `Pendiente Dosis 3 (${addMonths(d2, 6).toISOString().split('T')[0]})` };
-            if (!d4) return { ...checkStatus(addYears(d3, 1)), detalle: `Pendiente Dosis 4 (${addYears(d3, 1).toISOString().split('T')[0]})` };
-            if (!d5) return { ...checkStatus(addYears(d4, 1)), detalle: `Pendiente Dosis 5 (${addYears(d4, 1).toISOString().split('T')[0]})` };
+            if (!d2) return { ...checkStatus(addMonths(d1, 1)), detalle: 'Pendiente Dosis 2' };
+            if (!d3) return { ...checkStatus(addMonths(d2, 6)), detalle: 'Pendiente Dosis 3' };
+            if (!d4) return { ...checkStatus(addYears(d3, 1)), detalle: 'Pendiente Dosis 4' };
+            if (!d5) return { ...checkStatus(addYears(d4, 1)), detalle: 'Pendiente Dosis 5' };
 
-            return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema Vigente' };
+            return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema completo' };
         }
 
         case 'HEPATITIS_B':
@@ -121,8 +129,22 @@ export function getEstadoVacuna(paciente: PacienteData, tipoVacuna: TipoVacuna, 
             if (!d2) return { ...checkStatus(addMonths(d1, 1)), detalle: 'Pendiente Dosis 2' };
             if (!d3) return { ...checkStatus(addMonths(d2, 6)), detalle: 'Pendiente Dosis 3' };
 
-            const proximoRefuerzo = ref ? addYears(ref, 1) : addYears(d3, 1);
-            return { ...checkStatus(proximoRefuerzo), detalle: ref ? 'Refuerzo vigente' : 'Esquema completo, refuerzo pendiente' };
+            // Determine the last dose for booster calculation
+            const lastDose = d5 || d4 || d3;
+            if (!lastDose) return { estado: 'ROJO', proximaDosis: hoy, detalle: 'Error en esquema' };
+
+            // Once booster is present, it's COMPLETE and GREEN forever.
+            if (ref) {
+                return { estado: 'VERDE', proximaDosis: null, detalle: 'Esquema completo' };
+            }
+
+            const fechaRefuerzoSugerida = addYears(lastDose, 1);
+            const status = checkStatus(fechaRefuerzoSugerida);
+
+            return {
+                ...status,
+                detalle: 'Esquema básico completo, refuerzo sugerido'
+            };
         }
 
         case 'FIEBRE_AMARILLA': {
@@ -135,7 +157,7 @@ export function getEstadoVacuna(paciente: PacienteData, tipoVacuna: TipoVacuna, 
             if (!d1) return { estado: 'VERDE', proximaDosis: null, detalle: 'Opcional, sin iniciar' };
             const proximoRefuerzo = ref ? addYears(ref, 1) : addYears(d1, 1);
             // Even if expired, maybe not strictly RED for influenza overall, but let's calculate normally then ignore in global
-            return { ...checkStatus(proximoRefuerzo), detalle: ref ? 'Refuerzo vigente' : 'Dosis anual requerida' };
+            return { ...checkStatus(proximoRefuerzo), detalle: ref ? 'Esquema completo' : 'Dosis anual requerida' };
         }
 
         default:
@@ -248,4 +270,57 @@ export function calculateComplianceStats(pacientes: any[]) {
         complianceByRegion,
         complianceBySeccional
     };
+}
+
+export function getValidacionAutomatica(paciente: any, tipoVacuna: TipoVacuna, config?: VacunaConfig): string {
+    const issues: string[] = [];
+
+    const d1 = paciente.dosis_1 ? parseISO(paciente.dosis_1) : null;
+    const d2 = paciente.dosis_2 ? parseISO(paciente.dosis_2) : null;
+    const d3 = paciente.dosis_3 ? parseISO(paciente.dosis_3) : null;
+    const d4 = paciente.dosis_4 ? parseISO(paciente.dosis_4) : null;
+    const d5 = paciente.dosis_5 ? parseISO(paciente.dosis_5) : null;
+    const ref = paciente.refuerzo ? parseISO(paciente.refuerzo) : null;
+
+    const doses = [d1, d2, d3, d4, d5].filter(Boolean) as Date[];
+    const allDoseFields = [d1, d2, d3, d4, d5];
+
+    // 1. Check for chronological consistency
+    for (let i = 0; i < doses.length - 1; i++) {
+        if (isBefore(doses[i + 1], doses[i])) {
+            issues.push(`Error: Fechas no cronológicas entre dosis ${i + 1} y dosis ${i + 2}`);
+        }
+    }
+    if (ref && doses.length > 0 && isBefore(ref, doses[doses.length - 1])) {
+        issues.push("Error: Fecha de refuerzo es anterior a la última dosis");
+    }
+
+    // 2. Check for missing intermediate doses (skips)
+    let firstFound = -1;
+    let lastFound = -1;
+    for (let i = 0; i < 5; i++) {
+        if (allDoseFields[i]) {
+            if (firstFound === -1) firstFound = i;
+            lastFound = i;
+        }
+    }
+
+    if (firstFound !== -1) {
+        for (let i = firstFound; i < lastFound; i++) {
+            if (!allDoseFields[i]) {
+                issues.push(`Error: Salto de dosis detectado (Falta dosis ${i + 1})`);
+            }
+        }
+    }
+
+    // 3. Scheme Status (Esquema Vigente/Incompleto)
+    const status = getEstadoVacuna(paciente, tipoVacuna, config);
+    if (status.estado === 'VERDE' || status.estado === 'AZUL_MARINO') {
+        issues.push("Esquema completo y vigente");
+    } else {
+        issues.push(`Esquema pendiente: ${status.detalle}`);
+    }
+
+    // 4. Return as plain text joined by hyphens
+    return issues.join(' - ');
 }

@@ -1,5 +1,6 @@
 import { auditService } from './audit';
 import { supabase } from './supabase';
+import { getValidacionAutomatica } from '../utils/semaforoVacuna';
 
 export const api = {
     async buscarPacientes(filters: any) {
@@ -45,79 +46,105 @@ export const api = {
             const mergedData: any[] = [];
 
             groupsByDni.forEach((rows) => {
-                const tetanoRows = rows.filter(r => ['TETANOS', 'DPT', 'DT', 'TT'].includes(r.tipo_vacuna));
-                const otherRows = rows.filter(r => !['TETANOS', 'DPT', 'DT', 'TT'].includes(r.tipo_vacuna));
+                // 1. Group Tétanos family
+                const tetanoGroupNames = ['TETANOS', 'DPT', 'DT', 'TT', 'TÉTANOS'];
+                const tetanoRows = rows.filter(r => tetanoGroupNames.includes(r.tipo_vacuna.toUpperCase()));
+                const otherRows = rows.filter(r => !tetanoGroupNames.includes(r.tipo_vacuna.toUpperCase()));
 
-                if (tetanoRows.length > 0) {
+                const consolidate = (vaccineRows: any[], forceType?: string) => {
+                    if (vaccineRows.length === 0) return [];
+
                     const allDoses: any[] = [];
-                    tetanoRows.forEach(r => {
-                        [1, 2, 3, 4, 5, 'refuerzo'].forEach(n => {
-                            const dateKey = n === 'refuerzo' ? 'refuerzo' : `dosis_${n}`;
-                            const typeKey = n === 'refuerzo' ? 'refuerzo_tipo_vacuna' : `dosis_${n}_tipo_vacuna`;
-                            const procKey = n === 'refuerzo' ? 'procedencia_refuerzo' : `procedencia_${n}`;
-
-                            if (r[dateKey]) {
+                    vaccineRows.forEach(row => {
+                        ['dosis_1', 'dosis_2', 'dosis_3', 'dosis_4', 'dosis_5', 'refuerzo'].forEach(slot => {
+                            if (row[slot]) {
+                                const doseNum = slot === 'refuerzo' ? 0 : parseInt(slot.split('_')[1]);
+                                const procKey = slot === 'refuerzo' ? 'procedencia_refuerzo' : `procedencia_${doseNum}`;
+                                const obsKey = slot === 'refuerzo' ? 'refuerzo_obs' : `dosis_${doseNum}_obs`;
                                 allDoses.push({
-                                    row: r,
-                                    field: dateKey,
-                                    date: r[dateKey],
-                                    type: r[typeKey] || r.tipo_vacuna,
-                                    origin: r[procKey] || r.origen_aplicacion || ''
+                                    date: row[slot],
+                                    originalSlot: doseNum,
+                                    originalType: row.tipo_vacuna,
+                                    originalId: row.id,
+                                    procedencia: row[procKey] || row.origen_aplicacion,
+                                    observacion: row[obsKey],
+                                    row: row
                                 });
                             }
                         });
                     });
 
+                    // Sort by date accurately
                     allDoses.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    const uniqueDates = new Set();
-                    const mainDoses: any[] = [];
-                    for (const dose of allDoses) {
-                        if (!uniqueDates.has(dose.date) && mainDoses.length < 6) {
-                            uniqueDates.add(dose.date);
-                            mainDoses.push(dose);
-                            dose.consumed = true;
-                        } else {
-                            dose.consumed = false;
-                        }
-                    }
+                    const consolidated: any[] = [];
+                    let currentGroup: any = null;
+                    let lastSlotUsed = 0;
 
-                    const primaryRowOriginal = tetanoRows.find(r => r.tipo_vacuna === 'TETANOS') || tetanoRows[0];
-                    const primaryRow = { ...primaryRowOriginal, tipo_vacuna: 'TETANOS' };
+                    allDoses.forEach(dose => {
+                        let targetSlotNum = dose.originalSlot === 0 ? 0 : Math.max(lastSlotUsed + 1, dose.originalSlot);
 
-                    primaryRow.dosis_1 = null; primaryRow.dosis_2 = null;
-                    primaryRow.dosis_3 = null; primaryRow.dosis_4 = null;
-                    primaryRow.dosis_5 = null; primaryRow.refuerzo = null;
+                        if (!currentGroup || (targetSlotNum === 0 && currentGroup.refuerzo) || (targetSlotNum > 5)) {
+                            if (currentGroup) consolidated.push(currentGroup);
 
-                    const slots = ['dosis_1', 'dosis_2', 'dosis_3', 'dosis_4', 'dosis_5', 'refuerzo'];
-                    mainDoses.forEach((m, i) => {
-                        primaryRow[slots[i]] = m.date;
-                        primaryRow[slots[i] + '_tipo_vacuna'] = m.type;
-                        const procKey = slots[i].includes('refuerzo') ? 'procedencia_refuerzo' : `procedencia_${i + 1}`;
-                        primaryRow[procKey] = m.origin;
-                    });
-
-                    mergedData.push(primaryRow);
-
-                    tetanoRows.forEach(r => {
-                        const leftoverDoses = allDoses.filter(d => d.row === r && !d.consumed);
-                        if (leftoverDoses.length > 0) {
-                            const leftoverRow = { ...r, id: r.id + '_extra' };
-                            leftoverRow.dosis_1 = null; leftoverRow.dosis_2 = null;
-                            leftoverRow.dosis_3 = null; leftoverRow.dosis_4 = null;
-                            leftoverRow.dosis_5 = null; leftoverRow.refuerzo = null;
-                            leftoverDoses.forEach((d, idx) => {
-                                if (idx < slots.length) {
-                                    leftoverRow[slots[idx]] = d.date;
-                                    const procKey = slots[idx].includes('refuerzo') ? 'procedencia_refuerzo' : `procedencia_${idx + 1}`;
-                                    leftoverRow[procKey] = d.origin;
-                                }
+                            currentGroup = { ...dose.row };
+                            ['dosis_1', 'dosis_2', 'dosis_3', 'dosis_4', 'dosis_5', 'refuerzo'].forEach(s => {
+                                delete currentGroup[s];
+                                const d = s === 'refuerzo' ? 'refuerzo' : s.split('_')[1];
+                                delete currentGroup[s === 'refuerzo' ? 'procedencia_refuerzo' : `procedencia_${d}`];
+                                delete currentGroup[s === 'refuerzo' ? 'refuerzo_obs' : `dosis_${d}_obs`];
                             });
-                            mergedData.push(leftoverRow);
+                            currentGroup.involvedTypes = new Set();
+                            lastSlotUsed = 0;
+                            targetSlotNum = dose.originalSlot === 0 ? 0 : Math.max(lastSlotUsed + 1, dose.originalSlot);
                         }
+
+                        const targetSlot = targetSlotNum === 0 ? 'refuerzo' : `dosis_${targetSlotNum}`;
+                        currentGroup[targetSlot] = dose.date;
+                        currentGroup[`${targetSlot}_original_type`] = dose.originalType;
+                        currentGroup[`${targetSlot}_original_id`] = dose.originalId;
+
+                        const procKey = targetSlot === 'refuerzo' ? 'procedencia_refuerzo' : `procedencia_${targetSlotNum}`;
+                        currentGroup[procKey] = dose.procedencia;
+
+                        const obsKey = targetSlot === 'refuerzo' ? 'refuerzo_obs' : `dosis_${targetSlotNum}_obs`;
+                        currentGroup[obsKey] = dose.observacion;
+
+                        currentGroup.involvedTypes.add(dose.originalType);
+                        if (targetSlotNum > 0) lastSlotUsed = targetSlotNum;
                     });
-                }
-                mergedData.push(...otherRows);
+
+                    if (currentGroup) consolidated.push(currentGroup);
+
+                    consolidated.forEach(group => {
+                        if (forceType) {
+                            const hasPrimary = group.involvedTypes.has('TÉTANOS') || group.involvedTypes.has('TETANOS');
+                            if (group.involvedTypes.size > 1 || hasPrimary) {
+                                group.tipo_vacuna = forceType;
+                            } else if (group.involvedTypes.size === 1) {
+                                group.tipo_vacuna = Array.from(group.involvedTypes)[0] as string;
+                            }
+                        }
+                        delete group.involvedTypes;
+                    });
+
+                    return consolidated;
+                };
+
+                // Apply consolidation to Tétanos group
+                mergedData.push(...consolidate(tetanoRows, 'TETANOS'));
+
+                // Group and consolidate other vaccines by type
+                const groupsByType: Record<string, any[]> = {};
+                otherRows.forEach(r => {
+                    const type = r.tipo_vacuna.toUpperCase();
+                    if (!groupsByType[type]) groupsByType[type] = [];
+                    groupsByType[type].push(r);
+                });
+
+                Object.values(groupsByType).forEach(groupRows => {
+                    mergedData.push(...consolidate(groupRows));
+                });
             });
             processedData = mergedData;
         }
@@ -144,7 +171,27 @@ export const api = {
     },
 
     async registrarDosis(workerId: string, doseData: any) {
-        const { field, value, origen, responsable, observacion, isUpdate, doseNum } = doseData;
+        const { field, value, origen, responsable, observacion, isUpdate, doseNum, valor_anterior, accion } = doseData;
+
+        // Fetch current record to build full state for validation
+        const { data: currentRecord } = await supabase
+            .from('pacientes_vacunacion')
+            .select('*')
+            .eq('id', workerId.replace('_extra', ''))
+            .single();
+
+        if (!currentRecord) throw new Error('Registro no encontrado');
+
+        const currentHistory = currentRecord.historial_observaciones || '';
+        const now = new Date().toLocaleString('es-CO', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        });
+        const doseLabel = doseNum === 0 ? 'REFUERZO' : `DOSIS ${doseNum}`;
+        const actionLabel = accion === 'ELIMINAR_DOSIS' ? 'ELIMINACIÓN' : (isUpdate ? 'MODIFICACIÓN' : 'REGISTRO');
+
+        const newEntry = `[${now}] - ${responsable} - ${doseLabel} (${actionLabel}): ${observacion || 'Sin observación'}`;
+        const updatedHistory = currentHistory ? `${currentHistory}\n${newEntry}` : newEntry;
 
         // Map to correct procedencia column
         const procField = doseNum === 0 ? 'procedencia_refuerzo' : `procedencia_${doseNum}`;
@@ -152,29 +199,42 @@ export const api = {
         const updateData: any = {
             [field]: value,
             [procField]: origen,
-            responsable_enfermeria: responsable
+            responsable_enfermeria: responsable,
+            historial_observaciones: updatedHistory
         };
 
         // Map observation to specific dose column
+        const obsField = doseNum === 0 ? 'refuerzo_obs' : `dosis_${doseNum}_obs`;
         if (observacion !== undefined) {
-            const obsField = doseNum === 0 ? 'refuerzo_obs' : `dosis_${doseNum}_obs`;
             updateData[obsField] = observacion;
         }
+
+        // --- AUTOMATIC VALIDATION ---
+        // Create a merged version of the data to validate
+        const mergedData = { ...currentRecord, ...updateData };
+        // We need the vaccine configs for accurate validation
+        const configs = await this.getConfiguracionVacunas();
+        const config = configs.find((c: any) => c.tipo_vacuna === mergedData.tipo_vacuna);
+
+        const validacion = getValidacionAutomatica(mergedData, mergedData.tipo_vacuna as any, config);
+        updateData['validación automática'] = validacion;
+        // ----------------------------
 
         const { data: result, error } = await supabase
             .from('pacientes_vacunacion')
             .update(updateData)
-            .eq('id', workerId)
+            .eq('id', workerId.replace('_extra', ''))
             .select()
             .single();
 
         if (error) throw error;
 
-        const auditAction = isUpdate ? 'MODIFICAR_DOSIS' : 'REGISTRAR_DOSIS';
-        auditService.trackAction(auditAction, 'pacientes_vacunacion', workerId, {
+        auditService.trackAction(accion || (isUpdate ? 'EDITAR_DOSIS' : 'REGISTRAR_DOSIS'), 'pacientes_vacunacion', result.id, {
+            valor_anterior,
             valor_nuevo: updateData,
-            detalles: `Dosis: ${doseNum}, Campo: ${field}`
+            detalles: observacion
         });
+
         return result;
     },
 
@@ -187,6 +247,7 @@ export const api = {
 
         if (error) throw error;
         auditService.trackAction('EDITAR_TRABAJADOR', 'pacientes_vacunacion', dni, {
+            valor_anterior: data.valor_anterior,
             valor_nuevo: data.updates,
             detalles: data.observacion
         });
@@ -277,5 +338,35 @@ export const api = {
 
         const uniqueDocs = new Set(data.map(p => p.no_de_documento));
         return uniqueDocs.size;
+    },
+
+    async bulkUpdateValidations() {
+        // Fetch all records
+        const { data: records, error } = await supabase
+            .from('pacientes_vacunacion')
+            .select('*');
+
+        if (error) throw error;
+        if (!records || records.length === 0) return { count: 0 };
+
+        // Fetch configs
+        const configs = await this.getConfiguracionVacunas();
+
+        let updatedCount = 0;
+
+        // Process in batches to avoid overwhelming the connection/logic
+        for (const record of records) {
+            const config = configs.find((c: any) => c.tipo_vacuna === record.tipo_vacuna);
+            const validacion = getValidacionAutomatica(record, record.tipo_vacuna as any, config);
+
+            const { error: updateError } = await supabase
+                .from('pacientes_vacunacion')
+                .update({ 'validación automática': validacion })
+                .eq('id', record.id);
+
+            if (!updateError) updatedCount++;
+        }
+
+        return { count: updatedCount };
     }
 };

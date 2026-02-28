@@ -20,29 +20,48 @@ class AuditService {
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
 
-            const logData = {
-                ...log,
+            const timestamp = new Date().toISOString();
+
+            // Detailed log data (matches auditoria_detallada schema)
+            const detailedLog = {
                 usuario_id: user?.id,
                 usuario_email: user?.email || 'ANON',
-                timestamp: new Date().toISOString()
+                accion: log.accion,
+                tabla: log.tabla,
+                registro_id: log.registro_id,
+                valor_anterior: log.valor_anterior,
+                valor_nuevo: log.valor_nuevo,
+                detalles: log.detalles,
+                created_at: timestamp
+            };
+
+            // Simple log data (matches logs_actividad schema)
+            const simpleLog = {
+                accion: log.accion,
+                usuario_nombre: user?.email || 'ANON',
+                detalles: `${log.detalles || ''} | Table: ${log.tabla} | Record: ${log.registro_id}`,
+                timestamp: timestamp
             };
 
             // Log to the new detailed table
-            await supabase
+            const { error: detailedError } = await supabase
                 .from('auditoria_detallada')
-                .insert([logData]);
+                .insert([detailedLog]);
 
-            // For compatibility, also log to the old simple table if needed
-            await supabase
+            if (detailedError) {
+                console.error('Audit Detailed Error:', detailedError);
+            }
+
+            // For compatibility, also log to the old simple table
+            const { error: simpleError } = await supabase
                 .from('logs_actividad')
-                .insert([{
-                    accion: log.accion,
-                    usuario_nombre: user?.email || 'ANON',
-                    detalles: `${log.detalles || ''} | Table: ${log.tabla} | Record: ${log.registro_id}`,
-                    timestamp: logData.timestamp
-                }]);
+                .insert([simpleLog]);
+
+            if (simpleError) {
+                console.error('Audit Simple Error:', simpleError);
+            }
         } catch (error) {
-            console.warn('Silent audit failure:', error);
+            console.warn('Major audit failure:', error);
         }
     }
 
